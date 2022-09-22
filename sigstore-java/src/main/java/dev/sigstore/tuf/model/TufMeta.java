@@ -22,7 +22,7 @@ import org.immutables.gson.Gson;
  * Generic Tuf Metadata interface for various TUF resources such as Roles, Snapshots, and Targets.
  */
 public interface TufMeta {
-  /** Returns the metadata type. In this case 'root'. */
+  /** Returns the metadata type. In this case 'root', 'snapshot', or 'timestamp'. */
   @Gson.Named("_type")
   String getType();
 
