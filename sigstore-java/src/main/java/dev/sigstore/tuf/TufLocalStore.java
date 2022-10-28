@@ -15,9 +15,8 @@
  */
 package dev.sigstore.tuf;
 
-import dev.sigstore.tuf.model.Root;
-import dev.sigstore.tuf.model.SignedTufMeta;
-import dev.sigstore.tuf.model.Timestamp;
+import dev.sigstore.tuf.model.*;
+
 import java.io.IOException;
 import java.util.Optional;
 
@@ -27,7 +26,7 @@ public interface TufLocalStore {
   /**
    * A generic string for identifying the local store in debug messages. A file system based
    * implementation might return the path being used for storage, while an in-memory store may just
-   * return something like 'in memory'.
+   * return something like 'in-memory'.
    */
   String getIdentifier();
 
@@ -39,6 +38,18 @@ public interface TufLocalStore {
 
   /** Return local trusted timestamp metadata if there is any. */
   Optional<Timestamp> loadTimestamp() throws IOException;
+
+  /**
+   * Return the local trusted snapshot metadata if there is any.
+   */
+  Optional<Snapshot> loadSnapshot() throws IOException;
+
+  /**
+   * Return the local trusted targets metadata if there is any.
+   */
+  Optional<Targets> loadTargets() throws IOException;
+
+  void storeTargetFile(String targetName, byte[] targetContents) throws IOException;
 
   /**
    * Generic method to store one of the {@link SignedTufMeta} resources in the local tuf store.

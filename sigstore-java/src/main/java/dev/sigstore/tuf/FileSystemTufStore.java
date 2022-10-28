@@ -18,10 +18,8 @@ package dev.sigstore.tuf;
 import static dev.sigstore.json.GsonSupplier.GSON;
 
 import com.google.common.annotations.VisibleForTesting;
-import dev.sigstore.tuf.model.Role;
-import dev.sigstore.tuf.model.Root;
-import dev.sigstore.tuf.model.SignedTufMeta;
-import dev.sigstore.tuf.model.Timestamp;
+import dev.sigstore.tuf.model.*;
+
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
@@ -37,10 +35,12 @@ public class FileSystemTufStore implements TufLocalStore {
   private static final String SNAPSHOT_FILE_NAME = "snapshot.json";
   private static final String TIMESTAMP_FILE_NAME = "timestamp.json";
   private Path repoBaseDir;
+  private Path targetsCache;
 
   @VisibleForTesting
   FileSystemTufStore(Path repoBaseDir) {
     this.repoBaseDir = repoBaseDir;
+    this.targetsCache = repoBaseDir.resolve("targets");
   }
 
   public static TufLocalStore newFileSystemStore(Path repoBaseDir) {
@@ -65,9 +65,24 @@ public class FileSystemTufStore implements TufLocalStore {
     return loadRole(Role.Name.TIMESTAMP, Timestamp.class);
   }
 
+    @Override
+    public Optional<Snapshot> loadSnapshot() throws IOException {
+      return loadRole(Role.Name.SNAPSHOT, Snapshot.class);
+    }
+
+  @Override
+  public Optional<Targets> loadTargets() throws IOException {
+    return loadRole(Role.Name.TARGETS, Targets.class);
+  }
+
+  @Override
+  public void storeTargetFile(String targetName, byte[] targetContents) throws IOException {
+    Files.write(targetsCache.resolve(targetName), targetContents);
+  }
+
   @Override
   public <T extends SignedTufMeta> void storeMeta(T timestamp) throws IOException {
-    saveRole(timestamp);
+    storeRole(timestamp);
   }
 
   <T extends SignedTufMeta> Optional<T> loadRole(Role.Name roleName, Class<T> tClass)
@@ -79,7 +94,7 @@ public class FileSystemTufStore implements TufLocalStore {
     return Optional.of(GSON.get().fromJson(Files.readString(roleFile), tClass));
   }
 
-  <T extends SignedTufMeta> void saveRole(T role) throws IOException {
+  <T extends SignedTufMeta> void storeRole(T role) throws IOException {
     try (FileWriter fileWriter =
         new FileWriter(repoBaseDir.resolve(role.getSignedMeta().getType() + ".json").toFile())) {
       fileWriter.write(GSON.get().toJson(role));
@@ -99,7 +114,7 @@ public class FileSystemTufStore implements TufLocalStore {
         // The file is already backed-up. continue.
       }
     }
-    saveRole(root);
+    storeRole(root);
   }
 
   @Override

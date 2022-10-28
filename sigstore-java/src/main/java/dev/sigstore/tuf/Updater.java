@@ -18,10 +18,13 @@ package dev.sigstore.tuf;
 import static dev.sigstore.json.GsonSupplier.GSON;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.hash.Hashing;
 import dev.sigstore.encryption.Keys;
 import dev.sigstore.encryption.signers.Verifiers;
 import dev.sigstore.tuf.model.*;
+
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.InvalidKeyException;
@@ -34,14 +37,15 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+
 import org.bouncycastle.util.encoders.Hex;
 
 /**
  * Tuf metadata updater. Implements updating your trusted metadata from a single TUF mirror.
  *
  * @see <a
- *     href="https://theupdateframework.github.io/specification/latest/#detailed-client-workflow">TUF
- *     client workflow</a>
+ * href="https://theupdateframework.github.io/specification/latest/#detailed-client-workflow">TUF
+ * client workflow</a>
  */
 public class Updater {
 
@@ -57,11 +61,11 @@ public class Updater {
   private TufLocalStore localStore;
 
   Updater(
-      Clock clock,
-      Verifiers.Supplier verifiers,
-      MetaFetcher fetcher,
-      Path trustedRootPath,
-      TufLocalStore localStore) {
+    Clock clock,
+    Verifiers.Supplier verifiers,
+    MetaFetcher fetcher,
+    Path trustedRootPath,
+    TufLocalStore localStore) {
     this.clock = clock;
     this.verifiers = verifiers;
     this.trustedRootPath = trustedRootPath;
@@ -74,7 +78,7 @@ public class Updater {
   }
 
   public void update()
-      throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
+    throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
     var root = updateRoot();
     var timestamp = updateTimestamp(root);
     var snapshot = updateSnapshot(root, timestamp);
@@ -83,9 +87,9 @@ public class Updater {
 
   // https://theupdateframework.github.io/specification/latest/#detailed-client-workflow
   Root updateRoot()
-      throws IOException, RoleExpiredException, NoSuchAlgorithmException, InvalidKeySpecException,
-          InvalidKeyException, MetaFileExceedsMaxException, RoleVersionException,
-          SignatureVerificationException {
+    throws IOException, RoleExpiredException, NoSuchAlgorithmException, InvalidKeySpecException,
+    InvalidKeyException, FileExceedsMaxLengthException, RoleVersionException,
+    SignatureVerificationException {
     // 5.3.1) record the time at start and use for expiration checks consistently throughout the
     // update.
     updateStartTime = ZonedDateTime.now(clock);
@@ -140,8 +144,8 @@ public class Updater {
     // 5.3.11) If the timestamp and / or snapshot keys have been rotated, then delete the trusted
     // timestamp and snapshot metadata files.
     if (hasNewKeys(preUpdateSnapshotRole, trustedRoot.getSignedMeta().getRole(Role.Name.SNAPSHOT))
-        || hasNewKeys(
-            preUpdateTimestampRole, trustedRoot.getSignedMeta().getRole(Role.Name.TIMESTAMP))) {
+      || hasNewKeys(
+      preUpdateTimestampRole, trustedRoot.getSignedMeta().getRole(Role.Name.TIMESTAMP))) {
       localStore.clearMetaDueToKeyRotation();
     }
     return trustedRoot;
@@ -158,15 +162,15 @@ public class Updater {
   }
 
   void verifyDelegate(Root trustedRoot, SignedTufMeta delegate)
-      throws SignatureVerificationException, IOException, NoSuchAlgorithmException,
-          InvalidKeySpecException, InvalidKeyException {
+    throws SignatureVerificationException, IOException, NoSuchAlgorithmException,
+    InvalidKeySpecException, InvalidKeyException {
     verifyDelegate(
-        delegate.getSignatures(),
-        trustedRoot.getSignedMeta().getKeys(),
-        trustedRoot
-            .getSignedMeta()
-            .getRole(Role.Name.valueOf(delegate.getSignedMeta().getType().toUpperCase())),
-        delegate.getCanonicalSignedBytes());
+      delegate.getSignatures(),
+      trustedRoot.getSignedMeta().getKeys(),
+      trustedRoot
+        .getSignedMeta()
+        .getRole(Role.Name.valueOf(delegate.getSignedMeta().getType().toUpperCase())),
+      delegate.getCanonicalSignedBytes());
   }
 
   /**
@@ -174,24 +178,25 @@ public class Updater {
    *
    * @param signatures these are the signatures on the role meta we're verifying
    * @param publicKeys a map of key IDs to public keys used for signing various roles
-   * @param role the key ids and threshold values for role signing
+   * @param role       the key ids and threshold values for role signing
+   * @param verificationMaterial the contents to be verified for authenticity
    * @throws SignatureVerificationException if there are not enough verified signatures
    */
   @VisibleForTesting
   void verifyDelegate(
-      List<Signature> signatures,
-      Map<String, Key> publicKeys,
-      Role role,
-      byte[] verificationMaterial)
-      throws SignatureVerificationException, NoSuchAlgorithmException, InvalidKeyException,
-          InvalidKeySpecException {
+    List<Signature> signatures,
+    Map<String, Key> publicKeys,
+    Role role,
+    byte[] verificationMaterial)
+    throws SignatureVerificationException, NoSuchAlgorithmException, InvalidKeyException,
+    InvalidKeySpecException {
     // use set to not count the same key multiple times towards the threshold.
     var goodSigs = new HashSet<>(role.getKeyids().size() * 4 / 3);
     // role.getKeyIds() defines the keys allowed to sign for this role.
     for (String keyid : role.getKeyids()) {
       Optional<Signature> signatureMaybe =
-          signatures.stream().filter(sig -> sig.getKeyId().equals(keyid)).findFirst();
-      // only verify if we find a signature that matcheds an allowed key id.
+        signatures.stream().filter(sig -> sig.getKeyId().equals(keyid)).findFirst();
+      // only verify if we find a signature that matches an allowed key id.
       if (signatureMaybe.isPresent()) {
         var signature = signatureMaybe.get();
         // look for the public key that matches the key ID and use it for verification.
@@ -219,15 +224,15 @@ public class Updater {
   }
 
   Timestamp updateTimestamp(Root root)
-      throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException,
-          MetaNotFoundException, SignatureVerificationException {
+    throws IOException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException,
+    FileNotFoundException, SignatureVerificationException {
     // 1) download the timestamp.json bytes.
     var timestamp =
-        fetcher
-            .getMeta(Role.Name.TIMESTAMP, Timestamp.class)
-            .orElseThrow(
-                () -> new MetaNotFoundException("could not find timestamp.json on mirror."))
-            .getMetaResource();
+      fetcher
+        .getMeta(Role.Name.TIMESTAMP, Timestamp.class)
+        .orElseThrow(
+          () -> new FileNotFoundException("timestamp.json", fetcher.getSource()))
+        .getMetaResource();
 
     // 2) verify against threshold of keys as specified in trusted root.json
     verifyDelegate(root, timestamp);
@@ -238,10 +243,10 @@ public class Updater {
     if (localTimestampMaybe.isPresent()) {
       Timestamp localTimestamp = localTimestampMaybe.get();
       if (localTimestampMaybe.get().getSignedMeta().getVersion()
-          >= timestamp.getSignedMeta().getVersion()) {
+        >= timestamp.getSignedMeta().getVersion()) {
         throw new RoleVersionException(
-            localTimestamp.getSignedMeta().getVersion() + 1,
-            timestamp.getSignedMeta().getVersion());
+          localTimestamp.getSignedMeta().getVersion() + 1,
+          timestamp.getSignedMeta().getVersion());
       }
     }
     // 4) check expiration timestamp is after tuf update start time, else fail.
@@ -251,50 +256,103 @@ public class Updater {
     return timestamp;
   }
 
-  Snapshot updateSnapshot(Root root, Timestamp timestamp) {
+  Snapshot updateSnapshot(Root root, Timestamp timestamp) throws IOException, FileNotFoundException, InvalidHashException, SignatureVerificationException, NoSuchAlgorithmException, InvalidKeySpecException, InvalidKeyException {
     // 1) download the snapshot.json bytes up to few 10s of K max.
-
+    var snapshotResult = fetcher.getMeta(Role.Name.SNAPSHOT, Snapshot.class);
+    if (snapshotResult.isEmpty()) {
+      throw new FileNotFoundException("snapshot.json", fetcher.getSource());
+    }
     // 2) check against timestamp.snapshot.hash
-
+    var snapshot = snapshotResult.get();
+    verifyHashes("snapshot", snapshot.getRawBytes(), timestamp.getSignedMeta().getSnapshotMeta().getHashes());
     // 3) Check against threshold of root signing keys, else fail
-
+    verifyDelegate(root, snapshot.getMetaResource());
     // 4) Check snapshot.version matches timestamp.snapshot.version, else fail.
-
+    int snapshotVersion = snapshot.getMetaResource().getSignedMeta().getVersion();
+    int timestampSnapshotVersion = timestamp.getSignedMeta().getSnapshotMeta().getVersion();
+    if (snapshotVersion != timestampSnapshotVersion) {
+      throw new SnapshotVersionMismatchException(timestampSnapshotVersion, snapshotVersion);
+    }
     // 5) Ensure all targets and delegated targets in the trusted (old) snapshots file are less
     // than or equal to the equivalent target in the new file.  Check that no targets are missing
     // in new file. Else fail.
+    var trustedSnapshotMaybe = localStore.loadSnapshot();
+    if (trustedSnapshotMaybe.isPresent()) {
+      var trustedSnapshot = trustedSnapshotMaybe.get();
+      for (Map.Entry<String, SnapshotMeta.SnapshotTarget> trustedTargetEntry : trustedSnapshot.getSignedMeta().getMeta().entrySet()) {
+        var newTargetMeta = snapshot.getMetaResource().getSignedMeta().getMeta().get(trustedTargetEntry.getKey());
+        if (newTargetMeta == null) {
+          throw new SnapshotTargetMissingException(trustedTargetEntry.getKey());
+        }
+        if (newTargetMeta.getVersion() < trustedTargetEntry.getValue().getVersion()) {
+          throw new SnapshotTargetVersionException(trustedTargetEntry.getKey(), newTargetMeta.getVersion(), trustedTargetEntry.getValue().getVersion());
+        }
+      }
+    }
 
     // 6) Ensure expiration timestamp of snapshot is later than tuf update start time.
-
+    throwIfExpired(snapshot.getMetaResource().getSignedMeta().getExpiresAsDate());
     // 7) persist snapshot.
-    return null;
+    localStore.storeMeta(snapshot.getMetaResource());
+    return snapshot.getMetaResource();
   }
 
-  Targets updateTargets(Root root, Snapshot snapshot) {
+  private void verifyHashes(String name, byte[] data, Hashes hashes) throws InvalidHashException {
+    String computedSha256 = Hashing.sha256().hashString(new String(data, StandardCharsets.UTF_8), StandardCharsets.UTF_8).toString();
+    String expectedSha256 = hashes.getSha256();
+    if (!expectedSha256.equals(computedSha256)) {
+      throw new InvalidHashException(name, "sha256", expectedSha256, computedSha256);
+    }
+    String computedSha512 = Hashing.sha512().hashBytes(data).toString();
+    String expectedSha512 = hashes.getSha512();
+    if (!expectedSha512.equals(computedSha512)) {
+      throw new InvalidHashException(name, "sha512", expectedSha512, computedSha512);
+    }
+  }
+
+  Targets updateTargets(Root root, Snapshot snapshot) throws IOException, FileNotFoundException, InvalidHashException, SignatureVerificationException, NoSuchAlgorithmException,  InvalidKeySpecException, InvalidKeyException, FileExceedsMaxLengthException {
     // 1) download the targets.json to max bytes
-
+    var targetsResultMaybe = fetcher.getMeta(Role.Name.TARGETS, Targets.class);
+    if (targetsResultMaybe.isEmpty()) {
+      throw new FileNotFoundException("targets.json", fetcher.getSource());
+    }
+    var targetsResult = targetsResultMaybe.get();
     // 2) check hash against snapshot.targets.hash, else fail.
-
+    verifyHashes("targets.json", targetsResult.getRawBytes(), snapshot.getSignedMeta().getTargetMeta("targets.json").getHashes());
     // 3) check against threshold of keys as specified by trusted root.json
-
+    verifyDelegate(root, targetsResult.getMetaResource());
     // 4) check targets.version == snapshot.targets.version, else fail.
-
+    int targetsVersion = targetsResult.getMetaResource().getSignedMeta().getVersion();
+    int snapshotTargetsVersion = snapshot.getSignedMeta().getTargetMeta("targets.json").getVersion();
+    if (targetsVersion != snapshotTargetsVersion) {
+      throw new SnapshotVersionMismatchException(snapshotTargetsVersion, targetsVersion);
+    }
     // 5) check expiration is after tuf update start time
-
+    throwIfExpired(targetsResult.getMetaResource().getSignedMeta().getExpiresAsDate());
     // 6) persist targets metadata
-
-    // 7) starting at each top level target role:
-    //        do pre-order DFS of metadata.
-    //        skip already visited roles
-    //        if maximum roles visited go to 8) downloading targets
-    //        process delegations (not sure if we need this yet)
-
-    // 8) If target is missing metadata fail.
-
-    // 9) Download target up to length specified in bytes. verify against hash.
-
+    localStore.storeMeta(targetsResult.getMetaResource());
+    // Skip #7 and go straight to downloading targets. It looks like delegations were removed from sigstore TUF data.
+    // {@see https://github.com/sigstore/sigstore/issues/562}
+    // TODO(patrick@chainguard.dev): get review from Asra on whether we should be processing delegates.
+    for (Map.Entry<String, TargetMeta.TargetData> entry : targetsResult.getMetaResource().getSignedMeta().getTargets().entrySet()) {
+      String targetName = entry.getKey();
+      TargetMeta.TargetData targetData = entry.getValue();
+      // 8) If target is missing metadata fail.
+      if (targetData == null) {
+        throw new TargetMetadataMissingException(targetName);
+      }
+      // 9) Download target up to length specified in bytes. verify against hash.
+      var targetBytes = fetcher.fetchResource(targetName, targetData.getLength());
+      if (targetBytes == null) {
+        throw new FileNotFoundException(targetName, fetcher.getSource());
+      }
+      if (targetBytes.length != targetData.getLength()) {
+        throw new InvalidTargetLengthException(targetName, targetData.getLength(), targetBytes.length);
+      }
+      verifyHashes(entry.getKey(), targetBytes, targetData.getHashes());
+    }
     // Done!!
-    return null;
+    return targetsResult.getMetaResource();
   }
 
   @VisibleForTesting

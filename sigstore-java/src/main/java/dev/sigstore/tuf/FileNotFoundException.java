@@ -16,9 +16,9 @@
 package dev.sigstore.tuf;
 
 /** Thrown when a metadata resources was unexpectedly missing. */
-public class MetaNotFoundException extends TufException {
+public class FileNotFoundException extends TufException {
 
-  public MetaNotFoundException(String message) {
-    super(message);
+  public FileNotFoundException(String fileName, String source) {
+    super(String.format("file (%s) was not found at source (%s).", fileName, source));
   }
 }
