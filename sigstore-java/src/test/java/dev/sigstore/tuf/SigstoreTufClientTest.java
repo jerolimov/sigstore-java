@@ -39,6 +39,10 @@ class SigstoreTufClientTest {
             .build();
     client.forceUpdate();
     Assertions.assertNotNull(client.getSigstoreTrustedRoot());
+
+    Assertions.assertDoesNotThrow(() -> client.getSigstoreTrustedRoot().getCurrentTLog());
+    Assertions.assertDoesNotThrow(() -> client.getSigstoreTrustedRoot().getCurrentCTLog());
+    Assertions.assertDoesNotThrow(() -> client.getSigstoreTrustedRoot().getCurrentCA());
   }
 
   @Test
